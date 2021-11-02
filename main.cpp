@@ -1,9 +1,10 @@
 #include <windows.h>
 #include <stdio.h>
 
-//========================================================================================
+#include <atomic>
 
-#define START_DELAY 1000
+
+#define START_DELAY 3000
 
 #define READERS_QUANTITY 2
 #define WRITERS_QUANTITY 2
@@ -14,7 +15,9 @@
 #define WRITE_TIME 3000
 #define WRITER_DELAY 8000
 
-//========================================================================================
+
+int shared_resource = 0;
+
 
 HANDLE startEvent;
 
@@ -22,20 +25,13 @@ HANDLE writeMutex;
 HANDLE readAllowed;
 HANDLE writeAllowed;
 
-HANDLE writeCounterMutex;
-int writerCounter;
+std::atomic<int> writerCounter;
 
-HANDLE readCounterMutex;
-int readerCounter;
-
-//========================================================================================
+std::atomic<int> readerCounter;
 
 DWORD WINAPI ReadThreadProc(LPVOID);
 DWORD WINAPI WriteThreadProc(LPVOID);
 
-//========================================================================================
-//========================================================================================
-//========================================================================================
 
 int main( void )
 {
@@ -47,12 +43,9 @@ int main( void )
     readAllowed = CreateEvent(NULL, TRUE, TRUE, "Read Allowed");
     writeAllowed = CreateEvent(NULL, TRUE, TRUE, "Write Allowed");
     
-    writeCounterMutex = CreateMutex(NULL, FALSE, NULL);
     writerCounter = 0;
     
-    readCounterMutex = CreateMutex(NULL, FALSE, NULL);
     readerCounter = 0;
-    
     
     HANDLE hnd_readerThread[READERS_QUANTITY];
     HANDLE hnd_writerThread[WRITERS_QUANTITY];
@@ -73,10 +66,6 @@ int main( void )
     return 0;
 }
 
-//========================================================================================
-//========================================================================================
-//========================================================================================
-
 DWORD WINAPI ReadThreadProc(LPVOID lpParam) 
 {
     printf("READER Thread ID#%lu started!\n", GetCurrentThreadId());
@@ -91,31 +80,24 @@ DWORD WINAPI ReadThreadProc(LPVOID lpParam)
         
         WaitForSingleObject(readAllowed, INFINITE);
         
-        WaitForSingleObject(readCounterMutex, INFINITE);
+        ResetEvent(writeAllowed);
         ++readerCounter;
-        if (readerCounter == 1)
-            ResetEvent(writeAllowed);
-        ReleaseMutex(readCounterMutex);
         
-        printf("READER Thread ID#%lu reading... (readerCounter = %d)\n", GetCurrentThreadId(), readerCounter);
+        printf("READER Thread ID#%lu reading... (readerCounter = %d)\n", GetCurrentThreadId(), readerCounter.load());
         
         Sleep(READ_TIME);
         
-        printf("READER Thread ID#%lu done reading...\n", GetCurrentThreadId());
+        printf("READER Thread ID#%lu done reading... Shared_resource = %d\n", GetCurrentThreadId(), shared_resource);
         
-        WaitForSingleObject(readCounterMutex, INFINITE);
         --readerCounter;
-        if (readerCounter == 0)
+        if (readerCounter.load() == 0)
             SetEvent(writeAllowed);
-        ReleaseMutex(readCounterMutex);
         
         Sleep(READER_DELAY);
     }
     
     ExitThread(0);
 }
-
-//========================================================================================
 
 DWORD WINAPI WriteThreadProc(LPVOID lpParam) 
 {
@@ -128,30 +110,27 @@ DWORD WINAPI WriteThreadProc(LPVOID lpParam)
     {
         Sleep(WRITER_DELAY);
         
-        WaitForSingleObject(writeCounterMutex, INFINITE);
+        ResetEvent(readAllowed);
         ++writerCounter;
-        if (writerCounter == 1)
-            ResetEvent(readAllowed);
-        ReleaseMutex(writeCounterMutex);
         
-        printf("\nWRITER Thread ID#%lu wants to write (writerCounter = %d)...\n\n", GetCurrentThreadId(), writerCounter);
+        printf("\nWRITER Thread ID#%lu wants to write (writerCounter = %d)...\n\n", GetCurrentThreadId(), writerCounter.load());
         
         WaitForSingleObject(writeAllowed, INFINITE);
         WaitForSingleObject(writeMutex, INFINITE);
         
         printf("\nWRITER Thread ID#%lu writing...\n\n", GetCurrentThreadId());
         
+        ++shared_resource;
+        
         Sleep(WRITE_TIME);
         
-        printf("\nWRITER Thread ID#%lu done writing...\n\n", GetCurrentThreadId());
+        printf("\nWRITER Thread ID#%lu done writing... Shared_resource = %d\n\n", GetCurrentThreadId(), shared_resource);
         
         ReleaseMutex(writeMutex);
         
-        WaitForSingleObject(writeCounterMutex, INFINITE);
         --writerCounter;
-        if (writerCounter == 0)
+        if (writerCounter.load() == 0)
             SetEvent(readAllowed);
-        ReleaseMutex(writeCounterMutex);
     }
     
     ExitThread(0);
