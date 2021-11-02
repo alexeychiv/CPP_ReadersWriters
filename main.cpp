@@ -72,8 +72,6 @@ DWORD WINAPI ReadThreadProc(LPVOID lpParam)
     
     WaitForSingleObject(startEvent, INFINITE);
     
-    DWORD dwWaitResult;
-    
     while (true)
     {
         printf("READER Thread ID#%lu wants to read...\n", GetCurrentThreadId());
@@ -104,7 +102,6 @@ DWORD WINAPI WriteThreadProc(LPVOID lpParam)
     printf("WRITER Thread ID#%lu started!\n", GetCurrentThreadId());
     
     WaitForSingleObject(startEvent, INFINITE);
-    
     
     while (true)
     {
